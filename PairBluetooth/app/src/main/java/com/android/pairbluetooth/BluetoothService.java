@@ -1,18 +1,25 @@
 package com.android.pairbluetooth;
 
+import android.app.Service;
 import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothClass;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothServerSocket;
 import android.bluetooth.BluetoothSocket;
 import android.content.Context;
+import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.IBinder;
 import android.os.Message;
 import android.util.Log;
+
+import androidx.annotation.Nullable;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.security.Security;
 import java.util.UUID;
 
 /**
@@ -21,13 +28,17 @@ import java.util.UUID;
  * incoming connections, a thread for connecting with a device, and a
  * thread for performing data transmissions when connected.
  */
-public class BluetoothService {
+public class BluetoothService extends Service {
 
     // Name for the SDP record when creating server socket
-    private static final String NAME = "BluetoothChat";
+    private static final String NAME = "Pair_Bluetooth";
 
     // Unique UUID for this application
-    private static final UUID MY_UUID = UUID.fromString("fa87c0d0-afac-11de-8a39-0800200c9a66");
+    private static final UUID MY_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
+    private static final UUID UUID_ANDROID_DEVICE =
+            UUID.fromString("fa87c0d0-afac-11de-8a39-0800200c9a66");
+    private static final UUID UUID_OTHER_DEVICE =
+            UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
 
     // Member fields
     private final BluetoothAdapter mAdapter;
@@ -43,6 +54,12 @@ public class BluetoothService {
     public static final int STATE_CONNECTING = 2; // now initiating an outgoing connection
     public static final int STATE_CONNECTED = 3;  // now connected to a remote device
     private Handler handler; // handler that gets info from Bluetooth service
+
+    @Nullable
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null;
+    }
 
     // Defines several constants used when transmitting messages between the
     // service and the UI.
@@ -294,6 +311,7 @@ public class BluetoothService {
      * with a device. It runs straight through; the connection either
      * succeeds or fails.
      */
+    private UUID uuid = UUID.randomUUID();
     private class ConnectThread extends Thread {
         private final BluetoothSocket mmSocket;
         private final BluetoothDevice mmDevice;
@@ -301,24 +319,31 @@ public class BluetoothService {
         public ConnectThread(BluetoothDevice device) {
             mmDevice = device;
             BluetoothSocket tmp = null;
+            uuid = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
+            Log.d("HoangCV", "ConnectThread: "+device);
             // Get a BluetoothSocket for a connection with the
             // given BluetoothDevice
             try {
-                tmp = device.createRfcommSocketToServiceRecord(MY_UUID);
+                tmp = device.createRfcommSocketToServiceRecord(uuid);
+                Log.d("HoangCV", "ConnectThread: "+tmp);
             } catch (IOException e) {
             }
             mmSocket = tmp;
+            Log.d("HoangCV", "ConnectThread: "+mmSocket);
         }
 
         public void run() {
             setName("ConnectThread");
             // Always cancel discovery because it will slow down a connection
             mAdapter.cancelDiscovery();
+            Log.d("HoangCV", "run:1 ");
+            //connected(mmSocket, mmDevice);
             // Make a connection to the BluetoothSocket
             try {
                 // This is a blocking call and will only return on a
                 // successful connection or an exception
                 mmSocket.connect();
+                Log.d("HoangCV", "run:12 ");
             } catch (IOException e) {
                 connectionFailed();
                 // Close the socket
@@ -335,6 +360,7 @@ public class BluetoothService {
                 mConnectThread = null;
             }
             // Start the connected thread
+            Log.d("HoangCV", "run: ");
             connected(mmSocket, mmDevice);
         }
 
@@ -355,12 +381,13 @@ public class BluetoothService {
         public ConnectedThread(BluetoothSocket socket) {
             mmSocket = socket;
             InputStream tmpIn = null;
-            OutputStream tmpOut = null;
+            OutputStream tmpOut = null;//
 
             // Get the input and output streams; using temp objects because
             // member streams are final.
             try {
                 tmpIn = socket.getInputStream();
+                Log.d("HoangCV", "ConnectedThread: ");
             } catch (IOException e) {
                 Log.e("HoangCV", "Error occurred when creating input stream", e);
             }
@@ -379,7 +406,7 @@ public class BluetoothService {
             int numBytes; // bytes returned from read()
 
             // Keep listening to the InputStream until an exception occurs.
-            while (true) {
+            /*while (true) {
                 try {
                     // Read from the InputStream.
                     numBytes = mmInStream.read(mmBuffer);
@@ -392,20 +419,22 @@ public class BluetoothService {
                     Log.d("HoangCV", "Input stream was disconnected", e);
                     break;
                 }
-            }
+            }*/
         }
 
         // Call this from the main activity to send data to the remote device.
         public void write(byte[] bytes) {
             try {
                 mmOutStream.write(bytes);
+                Log.d("HoangCV", "write: "+bytes);
 
                 // Share the sent message with the UI activity.
                 Message writtenMsg = handler.obtainMessage(
                         MessageConstants.MESSAGE_WRITE, -1, -1, mmBuffer);
                 writtenMsg.sendToTarget();
             } catch (IOException e) {
-                Log.e("HoangCV", "Error occurred when sending data", e);
+                Log.e("HoangCV", "Error occurred when sending data");
+                e.printStackTrace();
 
                 // Send a failure message back to the activity.
                 Message writeErrorMsg =
